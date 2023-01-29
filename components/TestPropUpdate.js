@@ -86,25 +86,37 @@ class TestPropUpdate extends Component {
 
     setCurrentLocation = (locationChangedResult) => {
         if (this.state.liveUpdate) {
-            this.setState({
-                latlong: {
-                    "currentLatitude": locationChangedResult.nativeEvent.coordinate.latitude,
-                    "currentLongitude": locationChangedResult.nativeEvent.coordinate.longitude
-                }
-            })
+
+            // console.log(this.state.latlong, "################")
+            // console.log(
+            //     locationChangedResult.nativeEvent.coordinate.latitude, 
+            //     locationChangedResult.nativeEvent.coordinate.longitude,
+            //     "&&&&&&&&&&&&&&&&&"
+            //     )
             if (this.state.latlong !== null) {
-                // this.map.animateToRegion(this.getCurrentLocation(), 2000)
-                this.map.animateCamera({
-                    center: {
-                       latitude: this.state.latlong.currentLatitude,
-                       longitude: this.state.latlong.currentLongitude,
-                   },
-                   pitch: 80,
-                   heading: this.state.compasAngle,
-                   zoom: 16
-                }, {duration:500})
+                var prev_state = this.state.latlong.currentLatitude + this.state.latlong.currentLongitude
+                var curr_state = locationChangedResult.nativeEvent.coordinate.latitude + locationChangedResult.nativeEvent.coordinate.longitude
+                if (curr_state !== prev_state) {
+                    this.setState({
+                        latlong: {
+                            "currentLatitude": locationChangedResult.nativeEvent.coordinate.latitude,
+                            "currentLongitude": locationChangedResult.nativeEvent.coordinate.longitude
+                        }
+                    })
+                    this.setCameraFocus(this.state.compasAngle, this.state.latlong.currentLatitude, this.state.latlong.currentLongitude)
+                    return true
+                }
+            } else {
+                this.setState({
+                    latlong: {
+                        "currentLatitude": locationChangedResult.nativeEvent.coordinate.latitude,
+                        "currentLongitude": locationChangedResult.nativeEvent.coordinate.longitude
+                    }
+                })
+                // this.setCameraFocus(this.state.compasAngle, this.state.latlong.currentLatitude, this.state.latlong.currentLongitude)
             }
         }
+        // console.log(locationChangedResult)
     }
 
     getMapOrigin = () => ({
@@ -137,16 +149,39 @@ class TestPropUpdate extends Component {
 
     componentDidMount() {
         this.locationAccessAndSetOriginAndRegion()
-    }
-
-
-    componentDidUpdate() {
-        CompassHeading.start(5, ({ heading, accuracy }) => {
+        CompassHeading.start(3, ({ heading, accuracy }) => {
             if (this.state.compasAngle !== heading) {
                 this.setState({ compasAngle: heading })
                 console.log(heading)
             }
             CompassHeading.stop();
+        })
+    }
+
+    setCameraFocus = (head, lat, lon) => {
+        this.map.animateCamera({
+            center: {
+                latitude: lat,
+                longitude: lon
+            },
+            pitch: 85,
+            heading: head,
+            zoom: 19
+        }, { duration: 400 })
+
+    }
+
+
+
+
+
+    componentDidUpdate() {
+        CompassHeading.start(3, ({ heading, accuracy }) => {
+            if (this.state.compasAngle !== heading) {
+                this.setState({ compasAngle: heading })
+            }
+            CompassHeading.stop();
+            // this.setCameraFocus(heading, this.state.latlong.currentLatitude, this.state.latlong.currentLongitude)
         })
     }
 
@@ -171,20 +206,20 @@ class TestPropUpdate extends Component {
                         //    zoom: 16
                         // }}
 
-                        initialCamera = {{
+                        initialCamera={{
                             center: {
-                               latitude: this.state.latlong.currentLatitude,
-                               longitude: this.state.latlong.currentLongitude,
-                           },
-                           pitch: 80,
-                           heading: this.state.compasAngle,
-                           zoom: 16
+                                latitude: this.state.latlong.currentLatitude,
+                                longitude: this.state.latlong.currentLongitude,
+                            },
+                            pitch: 80,
+                            heading: this.state.compasAngle,
+                            zoom: 16
                         }}
 
 
-                        
 
-                       
+
+
 
                         onUserLocationChange={locationChangedResult => this.setCurrentLocation(locationChangedResult)}
 
@@ -275,13 +310,13 @@ class TestPropUpdate extends Component {
                         />
 
 
+
+
+
                     </MapView>
 
 
                     : <DoubleBounce />}
-
-
-
 
 
 
@@ -312,8 +347,8 @@ const styles = StyleSheet.create({
         // transform: [{ rotate: '90deg' }],
         position: 'absolute',
         width: "100%",
-        height: "100%",
-        // top: 0,
+        height: "150%",
+        top: 0,
         // left: 0,
         // right: 0,
         // bottom: 0,
