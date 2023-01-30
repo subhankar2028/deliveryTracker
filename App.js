@@ -4,12 +4,12 @@
 // Import React
 import React from 'react';
 import {SafeAreaView, StyleSheet, View} from 'react-native';
-import TestPropUpdate from './components/TestPropUpdate';
+import NavigateDelivery from './components/NavigateDelivery';
 
 const App = () => {
   return (
     <SafeAreaView style={{flex: 1}}>
-      <TestPropUpdate></TestPropUpdate>
+      <NavigateDelivery></NavigateDelivery>
       {/* <CompasTest></CompasTest> */}
     </SafeAreaView>
   );
