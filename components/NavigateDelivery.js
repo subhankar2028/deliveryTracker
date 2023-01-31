@@ -75,7 +75,7 @@ class NavigateDelivery extends Component {
                 console.log(error.message);
             },
             {
-                enableHighAccuracy: true,
+                enableHighAccuracy: false,
                 timeout: 30000,
                 maximumAge: 1000
             },
