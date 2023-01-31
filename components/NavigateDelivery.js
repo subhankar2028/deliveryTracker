@@ -75,7 +75,7 @@ class NavigateDelivery extends Component {
                 console.log(error.message);
             },
             {
-                enableHighAccuracy: false,
+                enableHighAccuracy: true,
                 timeout: 30000,
                 maximumAge: 1000
             },
@@ -340,6 +340,5 @@ const styles = StyleSheet.create({
 
     }
 });
-
 
 
