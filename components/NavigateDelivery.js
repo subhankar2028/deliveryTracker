@@ -39,7 +39,7 @@ class NavigateDelivery extends Component {
                 if (granted === PermissionsAndroid.RESULTS.GRANTED) {
                     const interval = setInterval(() => {
                         this.updateCurrentLatlong()
-                    }, 1500);
+                    }, 1000);
 
                     while (this.state.origin === null) {
                         this.updateCurrentLatlong()
@@ -93,7 +93,6 @@ class NavigateDelivery extends Component {
     });
 
     setCurrentLocation = (coords) => {
-        // console.log(coords)
         if (this.state.enableNavivgation && coords.speed > 0) {
             this.setState({
                 latlong: {
