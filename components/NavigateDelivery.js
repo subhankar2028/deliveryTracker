@@ -4,7 +4,7 @@ import Geolocation from '@react-native-community/geolocation';
 import MapView, { Marker, Polyline, Geojson } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
 import CompassHeading from 'react-native-compass-heading';
-import { getDistance, getRhumbLineBearing } from 'geolib';
+import { getDistance } from 'geolib';
 import {
     SafeAreaView,
     View,
@@ -21,11 +21,12 @@ import {
 const delay = ms => new Promise(
     resolve => setTimeout(resolve, ms)
 );
+
 class NavigateDelivery extends Component {
     locationAccessAndSetOriginAndRegion = async () => {
         if (Platform.OS === 'ios') {
-            getOneTimeLocation();
-            subscribeLocationLocation();
+            // getOneTimeLocation();
+            // subscribeLocationLocation();
         } else {
             try {
                 const granted = await PermissionsAndroid.request(
@@ -38,8 +39,7 @@ class NavigateDelivery extends Component {
                 if (granted === PermissionsAndroid.RESULTS.GRANTED) {
                     const interval = setInterval(() => {
                         this.updateCurrentLatlong()
-                        // this.setState({ enableNavivgation: !this.state.enableNavivgation })
-                    }, 750);
+                    }, 1500);
 
                     while (this.state.origin === null) {
                         this.updateCurrentLatlong()
@@ -59,16 +59,18 @@ class NavigateDelivery extends Component {
         Geolocation.getCurrentPosition(
             (position) => {
                 if (this.state.origin !== null) {
-                    this.setCurrentLocation({ "nativeEvent": { "coordinate": { "latitude": position.coords.latitude, "longitude": position.coords.longitude } } })
+                    this.setCurrentLocation(position.coords)
                     if (getDistance(
-                        { latitude: this.state.origin.currentLatitude, longitude: this.state.origin.currentLongitude },
-                        { latitude: this.state.latlong.currentLatitude, longitude: this.state.latlong.currentLongitude }
-                    ) > 200) {
-                        this.setMapOrigin({ "nativeEvent": { "coordinate": { "latitude": position.coords.latitude, "longitude": position.coords.longitude } } })
+                        { latitude: this.state.origin.currentLatitude, longitude: this.state.origin.currentLongitude },     //  Origin lat long.
+                        { latitude: position.coords.latitude, longitude: position.coords.longitude }   // Current lat long.
+                    ) > this.pathRefreshDistance) {
+                        this.setMapOrigin(position.coords)
                     }
                 } else {
-                    this.setMapOrigin({ "nativeEvent": { "coordinate": { "latitude": position.coords.latitude, "longitude": position.coords.longitude } } })
-                    this.setCurrentLocation({ "nativeEvent": { "coordinate": { "latitude": position.coords.latitude, "longitude": position.coords.longitude } } })
+                    this.setMapOrigin(position.coords)
+                    if (this.state.origin !== null) {
+                        this.setNavigation(false)
+                    }
                 }
             },
             (error) => {
@@ -80,10 +82,8 @@ class NavigateDelivery extends Component {
                 maximumAge: 1000
             },
         );
-
         return this.state.latlong
     }
-
 
     getCurrentLocation = () => ({
         latitude: this.state.latlong.currentLatitude,
@@ -92,75 +92,18 @@ class NavigateDelivery extends Component {
         longitudeDelta: 0.01//0.01155
     });
 
-
-
-    setCurrentLocation = (locationChangedResult) => {
-        if (this.state.enableNavivgation) {
-
-            // prev_state = (this.state.latlong.currentLatitude, this.state.latlong.currentLongitude)
-            // current_state = (locationChangedResult.nativeEvent.coordinate.latitude, locationChangedResult.nativeEvent.coordinate.longitude)
-            // console.log(prev_state ===current_state, "###########")
-            var displacement = getDistance(
-                { latitude: this.state.latlong.currentLatitude, longitude: this.state.latlong.currentLongitude },
-                { latitude: locationChangedResult.nativeEvent.coordinate.latitude, longitude: locationChangedResult.nativeEvent.coordinate.longitude }
-            )
-            if (this.state.latlong !== null) {
-                if (displacement > 3) {
-                    console.log(displacement, "###########")
-
-
-                    this.setState({
-                        camHead: getRhumbLineBearing({
-                            latitude: this.state.latlong.currentLatitude,
-                            longitude: this.state.latlong.currentLongitude,
-                        },
-                            {
-                                latitude: locationChangedResult.nativeEvent.coordinate.latitude,
-                                longitude: locationChangedResult.nativeEvent.coordinate.longitude
-                            }),
-                        latlong: {
-                            "currentLatitude": locationChangedResult.nativeEvent.coordinate.latitude,
-                            "currentLongitude": locationChangedResult.nativeEvent.coordinate.longitude
-                        }
-                    })
-
-
-                    // this.setCameraFocus(this.state.camHead, this.state.latlong.currentLatitude, this.state.latlong.currentLongitude)
-
-                    // this.map.animateCamera({
-                    //     center: {
-                    //         latitude: locationChangedResult.nativeEvent.coordinate.latitude,
-                    //         longitude: locationChangedResult.nativeEvent.coordinate.longitude
-                    //     }
-                    // })
-                    // this.map.animateCamera({
-                    //     center: {
-                    //         latitude: locationChangedResult.nativeEvent.coordinate.latitude,
-                    //         longitude: locationChangedResult.nativeEvent.coordinate.longitude
-                    //     },
-                    //     pitch: this.state.camPitch,
-                    //     heading: this.state.camHead,
-                    //     zoom: this.state.camZoom
-                    // }, { duration: 1000 })
-                    return true
-                }
-            } else {
-                this.setState({
-                    latlong: {
-                        "currentLatitude": locationChangedResult.nativeEvent.coordinate.latitude,
-                        "currentLongitude": locationChangedResult.nativeEvent.coordinate.longitude
-                    }
-                })
-                // this.setCameraFocus(this.state.camHead, this.state.latlong.currentLatitude, this.state.latlong.currentLongitude)
-            }
+    setCurrentLocation = (coords) => {
+        // console.log(coords)
+        if (this.state.enableNavivgation && coords.speed > 0) {
+            this.setState({
+                latlong: {
+                    "currentLatitude": coords.latitude,
+                    "currentLongitude": coords.longitude
+                },
+                camHead: coords.heading,
+            })
         }
-        // console.log(locationChangedResult)
     }
-
-
-
-
-
 
     getMapOrigin = () => {
         if (this.state.origin === null) {
@@ -173,11 +116,15 @@ class NavigateDelivery extends Component {
         }
     }
 
-    setMapOrigin = (locationChangedResult) => {
+    setMapOrigin = (coords) => {
         this.setState({
             origin: {
-                currentLatitude: locationChangedResult.nativeEvent.coordinate.latitude,
-                currentLongitude: locationChangedResult.nativeEvent.coordinate.longitude
+                "currentLatitude": coords.latitude,
+                "currentLongitude": coords.longitude
+            },
+            latlong: {
+                "currentLatitude": coords.latitude,
+                "currentLongitude": coords.longitude
             }
         })
     }
@@ -195,26 +142,33 @@ class NavigateDelivery extends Component {
 
     }
 
-    toggleNavigation = () =>{
-        this.setState({
-            enableNavivgation : !this.state.enableNavivgation,
-            camPitch : this.state.enableNavivgation ? 0:90
-        })
-        console.log(this.state.enableNavivgation)
+    setNavigation = (navState) => {
+        if (navState) {
+            this.setState({
+                enableNavivgation: navState,
+                camPitch: 90,
+                camZoom: 18,
+            })
+        } else {
+            this.setState({
+                enableNavivgation: navState,
+                camPitch: 0,
+                camZoom: 12,
+            })
+        }
     }
 
     constructor(props) {
         super(props);
         this.state = {
-            suggestedInitCord: 0,
-            enableNavivgation: false,
-            origin: null,
+            pathRefreshDistance: 200,  //  Google suggestion path with update only afte covering this distance in meter.
+            origin: null,           //  Origin is the starting cord and it updates after each "pathRefreshDistance" coverage.
+            enableNavivgation: true,    //  true : Navigation mood & false : Static mood
             latlong: { currentLatitude: 22.5726, currentLongitude: 88.3639 },
-            initialRegion: null,
-            camPitch: 90,
-            camHead: 0,
-            compasHead: 90,
-            camZoom: 18,
+            camPitch: 90,             // The camera viewing angle.
+            camHead: 0,             // Viewing direction of camera(in degree).
+            camZoom: 18,             // Camera zooming value.
+            compasHead: 90,             // Angle of the compass head.
         };
     }
 
@@ -222,20 +176,14 @@ class NavigateDelivery extends Component {
         this.locationAccessAndSetOriginAndRegion()
     }
 
-
-
-
-
     componentDidUpdate() {
         // CompassHeading.start(3, ({ heading, accuracy }) => {
         //     if (this.state.camHead !== heading) {
-        //         // this.setState({ compasHead: heading })
-        //         // this.setCameraFocus(heading, this.state.latlong.currentLatitude, this.state.latlong.currentLongitude)
+        //         this.setState({ compasHead: heading })
+        //         this.setCameraFocus(heading, this.state.latlong.currentLatitude, this.state.latlong.currentLongitude)
         //     }
-        //     // console.log("CompassHeading : ", heading)
         //     CompassHeading.stop();
         // })
-
         this.map.animateCamera({
             center: {
                 latitude: this.state.latlong.currentLatitude,
@@ -245,13 +193,11 @@ class NavigateDelivery extends Component {
             heading: this.state.camHead,
             zoom: this.state.camZoom
         }, { duration: 1000 })
-
     }
 
     render() {
         return (
             <SafeAreaView style={{ flex: 1, position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
-
                 <MapView
                     ref={(map) => { this.map = map; }}
                     initialCamera={{
@@ -269,10 +215,9 @@ class NavigateDelivery extends Component {
                     //     this.setCurrentLocation(locationChangedResult)
                     // }
                     // userLocationUpdateInterval = {1000}
-
-                    showsMyLocationButton={true}
+                    showsMyLocationButton={!this.state.enableNavivgation}
                     showsUserLocation={!this.state.enableNavivgation}
-                    followsUserLocation={true}
+                    followsUserLocation={!this.state.enableNavivgation}
 
                     // onPress={console.log('triggering onPress')}
                     // onPanDrag={console.log('triggering onPanDrag')}
@@ -289,29 +234,13 @@ class NavigateDelivery extends Component {
                     showsBuildings={true}
                     moveOnMarkerPress={true}
                     compassOffset={true}
-                    style={[
-                        styles.mapStyle,
-                        // {
-                        //     transform: [{ rotate: `${360 - this.state.camHead}deg` }],
-                        // }
-                    ]}
-
-                // initialRegion={this.getCurrentLocation()}
+                    style={[styles.mapStyle,]}
                 >
-
-                    {/* <Geojson
-                            geojson={myPlace}
-                            strokeColor="red"
-                            fillColor="green"
-                            strokeWidth={2}
-                        /> */}
-
                     <Marker coordinate={{ title: "Baguihati", latitude: 22.6138, longitude: 88.4306, latitudeDelta: 0.4, longitudeDelta: 0.1, }} />
                     <Marker coordinate={{ title: "Unitech", latitude: 22.5771, longitude: 88.4828, latitudeDelta: 0.4, longitudeDelta: 0.1, }} />
                     <Marker coordinate={{ title: "Airport", latitude: 22.6531, longitude: 88.4449, latitudeDelta: 0.4, longitudeDelta: 0.1, }} />
                     <Marker coordinate={{ title: "City center 2", latitude: 22.6226, longitude: 88.4503, latitudeDelta: 0.4, longitudeDelta: 0.1, }} />
                     <Marker coordinate={{ title: "Collegemore", latitude: 22.5746, longitude: 88.4342, latitudeDelta: 0.4, longitudeDelta: 0.1, }} />
-
                     {/* <Marker
                         // animateMarkerToCoordinate
                         flat = {true}
@@ -321,10 +250,6 @@ class NavigateDelivery extends Component {
                     >
                         <Image source={require('./Navigation-04.png')} style={{ height: 35, width: 35 }} />
                     </Marker> */}
-
-
-
-
                     <MapViewDirections
                         // precision = 'high'
                         resetOnChange={false}
@@ -348,39 +273,22 @@ class NavigateDelivery extends Component {
                             latitudeDelta: 0.4,
                             longitudeDelta: 0.1,
                         }}
-
-
                         onReady={result => {
                             console.log(`Distance: ${result.distance} km`)
-                            // console.log(`Duration: ${result.duration} min.`)
-                            // console.log(result, "RRRRREEEEESSSSUUUUULLLLLTTTTT")
-                            this.state.suggestedInitCord = result.coordinates[0]
-
                         }}
                     />
-
-
-
-
-
                 </MapView>
-
-                <TouchableOpacity activeOpacity={.5} onPress={this.toggleNavigation} style={{top: "25%" }}>
-                    <Image source={require('./Navigation-04.png')} style={{ height: 35, width: 35}} />
+                <TouchableOpacity activeOpacity={.5}
+                    onPress={() => this.setNavigation(!this.state.enableNavivgation)}
+                    style={this.state.enableNavivgation ? { top: "28%" } : { top: "45%", left: "45%" }}>
+                    <Image source={require('./Navigation-04.png')} style={{ height: 35, width: 35 }} />
                 </TouchableOpacity>
-
-                {/* // : <DoubleBounce />} */}
-
-
-
-
             </SafeAreaView>
         );
     }
 }
 
 export default NavigateDelivery;
-
 
 const styles = StyleSheet.create({
     container: {
