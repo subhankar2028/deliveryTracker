@@ -39,7 +39,7 @@ class NavigateDelivery extends Component {
                 if (granted === PermissionsAndroid.RESULTS.GRANTED) {
                     const interval = setInterval(() => {
                         this.updateCurrentLatlong()
-                    }, 1000);
+                    }, 5000);
 
                     while (this.state.origin === null) {
                         this.updateCurrentLatlong()
@@ -59,6 +59,9 @@ class NavigateDelivery extends Component {
         Geolocation.getCurrentPosition(
             (position) => {
                 if (this.state.origin !== null) {
+                    if (position.coords.accuracy<10){
+                        return
+                    }
                     this.setCurrentLocation(position.coords)
                     if (getDistance(
                         { latitude: this.state.origin.currentLatitude, longitude: this.state.origin.currentLongitude },     //  Origin lat long.
@@ -93,7 +96,8 @@ class NavigateDelivery extends Component {
     });
 
     setCurrentLocation = (coords) => {
-        if (this.state.enableNavivgation && coords.speed > 0) {
+        // if (this.state.enableNavivgation && coords.speed > 0) {
+        if (this.state.enableNavivgation) {
             this.setState({
                 latlong: {
                     "currentLatitude": coords.latitude,
@@ -145,14 +149,14 @@ class NavigateDelivery extends Component {
         if (navState) {
             this.setState({
                 enableNavivgation: navState,
-                camPitch: 90,
-                camZoom: 18,
+                camPitch: 0,
+                camZoom: 20,
             })
         } else {
             this.setState({
                 enableNavivgation: navState,
                 camPitch: 0,
-                camZoom: 12,
+                camZoom: 18,
             })
         }
     }
