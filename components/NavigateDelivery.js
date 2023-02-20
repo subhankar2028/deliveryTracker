@@ -1,9 +1,9 @@
 import { Bubbles, DoubleBounce, Bars, Pulse } from 'react-native-loader';
 import React, { Component } from 'react';
 import Geolocation from '@react-native-community/geolocation';
-import MapView, { Marker, Polyline, Geojson } from 'react-native-maps';
+import MapView, { Marker } from 'react-native-maps';
 import MapViewDirections from 'react-native-maps-directions';
-import CompassHeading from 'react-native-compass-heading';
+// import CompassHeading from 'react-native-compass-heading';
 import { getDistance } from 'geolib';
 import {
     SafeAreaView,
@@ -37,15 +37,7 @@ class NavigateDelivery extends Component {
                     },
                 );
                 if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-                    const interval = setInterval(() => {
-                        this.updateCurrentLatlong()
-                    }, 5000);
-
-                    while (this.state.origin === null) {
-                        this.updateCurrentLatlong()
-                        await delay(500);
-                    }
-
+                    this.updateCurrentLatlong()
                 } else {
                     console.log('Permission Denied');
                 }
@@ -58,23 +50,9 @@ class NavigateDelivery extends Component {
     updateCurrentLatlong = () => {
         Geolocation.getCurrentPosition(
             (position) => {
-                if (this.state.origin !== null) {
-                    if (position.coords.accuracy<10){
-                        return
-                    }
-                    this.setCurrentLocation(position.coords)
-                    if (getDistance(
-                        { latitude: this.state.origin.currentLatitude, longitude: this.state.origin.currentLongitude },     //  Origin lat long.
-                        { latitude: position.coords.latitude, longitude: position.coords.longitude }   // Current lat long.
-                    ) > this.pathRefreshDistance) {
-                        this.setMapOrigin(position.coords)
-                    }
-                } else {
-                    this.setMapOrigin(position.coords)
-                    if (this.state.origin !== null) {
-                        this.setNavigation(false)
-                    }
-                }
+                this.setState({ "accuracy": position.coords.accuracy })
+                this.setMapOrigin(position.coords)
+                this.map.fitToCoordinates(this.state.waypoints, { edgePadding: { top: 10, right: 10, bottom: 10, left: 10 }, animated: false })
             },
             (error) => {
                 console.log(error.message);
@@ -88,35 +66,20 @@ class NavigateDelivery extends Component {
         return this.state.latlong
     }
 
-    getCurrentLocation = () => ({
-        latitude: this.state.latlong.currentLatitude,
-        longitude: this.state.latlong.currentLongitude,
-        latitudeDelta: 0.01,//0.01155,
-        longitudeDelta: 0.01//0.01155
-    });
-
-    setCurrentLocation = (coords) => {
-        // if (this.state.enableNavivgation && coords.speed > 0) {
-        if (this.state.enableNavivgation) {
+    setCurrentLocation = async (coords) => {
+        console.log("setCurrentLocation()  -- called")
+        if (!this.state.origin) { return; }  //When origin is null
+        getDistance(
+            { latitude: coords.latitude, longitude: coords.longitude },
+            { latitude: this.state.origin.currentLatitude, longitude: this.state.origin.currentLongitude }
+        ) > this.state.pathRefreshDistance ?
+            this.setMapOrigin(coords) :
             this.setState({
-                latlong: {
-                    "currentLatitude": coords.latitude,
-                    "currentLongitude": coords.longitude
-                },
-                camHead: coords.heading,
+                latlong: { "currentLatitude": coords.latitude, "currentLongitude": coords.longitude },
+                camHead: coords.speed > 0.5 ? coords.heading : this.state.compasHead,
+                speed: coords.speed
             })
-        }
-    }
-
-    getMapOrigin = () => {
-        if (this.state.origin === null) {
-            return null
-        } else {
-            return {
-                latitude: this.state.origin.currentLatitude,
-                longitude: this.state.origin.currentLongitude,
-            };
-        }
+        this.setCameraFocus()
     }
 
     setMapOrigin = (coords) => {
@@ -132,46 +95,77 @@ class NavigateDelivery extends Component {
         })
     }
 
-    setCameraFocus = (head, lat, lon) => {
-        this.map.animateCamera({
-            center: {
-                latitude: lat,
-                longitude: lon
-            },
-            pitch: this.state.camPitch,
-            heading: head,
-            zoom: this.state.camZoom
-        }, { duration: 1000 })
+    getCurrentLocation = () => ({
+        latitude: this.state.latlong.currentLatitude,
+        longitude: this.state.latlong.currentLongitude,
+        latitudeDelta: 0.01,//0.01155,
+        longitudeDelta: 0.01//0.01155
+    });
 
+    getMapOrigin = () => {
+        if (this.state.origin === null) {
+            return null
+        } else {
+            return {
+                latitude: this.state.origin.currentLatitude,
+                longitude: this.state.origin.currentLongitude,
+            };
+        }
     }
 
-    setNavigation = (navState) => {
-        if (navState) {
-            this.setState({
-                enableNavivgation: navState,
-                camPitch: 0,
-                camZoom: 20,
-            })
-        } else {
-            this.setState({
-                enableNavivgation: navState,
-                camPitch: 0,
-                camZoom: 18,
-            })
+    setCameraFocus = () => {
+        this.map.animateCamera({
+            center: { latitude: this.state.latlong.currentLatitude, longitude: this.state.latlong.currentLongitude },
+            pitch: this.state.camPitch,
+            heading: this.state.camHead,
+            zoom: this.state.camZoom
+        }, { duration: this.state.camAnimationDuration })
+    }
+
+    startOrStopInterval() {
+        if (this.state.enableNavivgation && this.trackIntervalId === null) {
+            this.trackIntervalId = setInterval(() => {
+                this.updateCurrentLatlong()
+            }, this.state.trackInterval)
+        } else if (!this.state.enableNavivgation && this.trackIntervalId !== null) {
+            if (this.trackIntervalId !== null) {
+                clearInterval(this.trackIntervalId);
+                this.trackIntervalId = null
+            }
         }
     }
 
     constructor(props) {
         super(props);
+        // this.mapRef = null
         this.state = {
             pathRefreshDistance: 200,  //  Google suggestion path with update only afte covering this distance in meter.
             origin: null,           //  Origin is the starting cord and it updates after each "pathRefreshDistance" coverage.
-            enableNavivgation: true,    //  true : Navigation mood & false : Static mood
+            enableNavivgation: false,    //  true : Navigation mood & false : Static mood
             latlong: { currentLatitude: 22.5726, currentLongitude: 88.3639 },
             camPitch: 90,             // The camera viewing angle.
             camHead: 0,             // Viewing direction of camera(in degree).
-            camZoom: 18,             // Camera zooming value.
+            camZoom: 20,             // Camera zooming value.
             compasHead: 90,             // Angle of the compass head.
+            trackIntervalId: null,
+            trackInterval: 5000,
+            virtualPoints: [],
+            vartualPointInterval: 2,
+            camAnimationDuration: 1000,
+            accuracy: null,
+            speed: 0,
+            waypoints: [
+                { title: "Airport", latitude: 22.6531, longitude: 88.4449 },
+                { title: "Unitech", latitude: 22.5771, longitude: 88.4828 },
+                { title: "City center 2", latitude: 22.6226, longitude: 88.4503 },
+                { title: "Baguihati", latitude: 22.6138, longitude: 88.4306 },
+                { title: "Collegemore", latitude: 22.5746, longitude: 88.4342 }
+            ],
+            destination: {
+                title: "Unitech",
+                latitude: 22.5771,
+                longitude: 88.4828
+            }
         };
     }
 
@@ -179,30 +173,21 @@ class NavigateDelivery extends Component {
         this.locationAccessAndSetOriginAndRegion()
     }
 
-    componentDidUpdate() {
-        // CompassHeading.start(3, ({ heading, accuracy }) => {
-        //     if (this.state.camHead !== heading) {
-        //         this.setState({ compasHead: heading })
-        //         this.setCameraFocus(heading, this.state.latlong.currentLatitude, this.state.latlong.currentLongitude)
-        //     }
-        //     CompassHeading.stop();
-        // })
-        this.map.animateCamera({
-            center: {
-                latitude: this.state.latlong.currentLatitude,
-                longitude: this.state.latlong.currentLongitude
-            },
-            pitch: this.state.camPitch,
-            heading: this.state.camHead,
-            zoom: this.state.camZoom
-        }, { duration: 1000 })
-    }
+    // componentDidUpdate() {
+    // CompassHeading.start(3, ({ heading, accuracy }) => {
+    //     this.setState({ compasHead: heading })
+    //     // this.setCameraFocus()
+    //     CompassHeading.stop();
+    // })
+    // }
 
     render() {
         return (
             <SafeAreaView style={{ flex: 1, position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
                 <MapView
                     ref={(map) => { this.map = map; }}
+                    onLayout={() => this.map.fitToCoordinates(this.state.waypoints, { edgePadding: { top: 10, right: 10, bottom: 10, left: 10 }, animated: false })}
+
                     initialCamera={{
                         center: {
                             latitude: this.state.latlong.currentLatitude,
@@ -213,15 +198,19 @@ class NavigateDelivery extends Component {
                         zoom: this.state.camZoom
                     }}
 
-                    // onUserLocationChange={locationChangedResult => 
-                    //     // console.log(locationChangedResult, "&&&&&&&&&&")
-                    //     this.setCurrentLocation(locationChangedResult)
-                    // }
-                    // userLocationUpdateInterval = {1000}
-                    showsMyLocationButton={!this.state.enableNavivgation}
-                    showsUserLocation={!this.state.enableNavivgation}
-                    followsUserLocation={!this.state.enableNavivgation}
-
+                    userLocationUpdateInterval={this.state.trackInterval}
+                    showsMyLocationButton={true}//{this.state.enableNavivgation}
+                    showsUserLocation={true}//{this.state.enableNavivgation}
+                    // followsUserLocation={true}//{this.state.enableNavivgation}
+                    userLocationPriority='balanced' // 'balanced' | 'high' | 'low' | 'passive';
+                    onUserLocationChange={locationChangedResult => {
+                        // console.log(locationChangedResult)
+                        if (this.state.enableNavivgation) {
+                            this.setCurrentLocation(locationChangedResult.nativeEvent.coordinate)
+                        }
+                    }}
+                    toolbarEnabled={true}
+                    // liteMode = {true}
                     // onPress={console.log('triggering onPress')}
                     // onPanDrag={console.log('triggering onPanDrag')}
                     // rotateEnabled = {tru}
@@ -237,13 +226,21 @@ class NavigateDelivery extends Component {
                     showsBuildings={true}
                     moveOnMarkerPress={true}
                     compassOffset={true}
-                    style={[styles.mapStyle,]}
+                    style={this.state.enableNavivgation ? styles.navStyle : styles.staticStyle}
                 >
-                    <Marker coordinate={{ title: "Baguihati", latitude: 22.6138, longitude: 88.4306, latitudeDelta: 0.4, longitudeDelta: 0.1, }} />
+                    {/* <Marker coordinate={{ title: "Baguihati", latitude: 22.6138, longitude: 88.4306, latitudeDelta: 0.4, longitudeDelta: 0.1, }} />
                     <Marker coordinate={{ title: "Unitech", latitude: 22.5771, longitude: 88.4828, latitudeDelta: 0.4, longitudeDelta: 0.1, }} />
                     <Marker coordinate={{ title: "Airport", latitude: 22.6531, longitude: 88.4449, latitudeDelta: 0.4, longitudeDelta: 0.1, }} />
                     <Marker coordinate={{ title: "City center 2", latitude: 22.6226, longitude: 88.4503, latitudeDelta: 0.4, longitudeDelta: 0.1, }} />
-                    <Marker coordinate={{ title: "Collegemore", latitude: 22.5746, longitude: 88.4342, latitudeDelta: 0.4, longitudeDelta: 0.1, }} />
+                    <Marker coordinate={{ title: "Collegemore", latitude: 22.5746, longitude: 88.4342, latitudeDelta: 0.4, longitudeDelta: 0.1, }} /> */}
+
+                    {
+                        this.state.waypoints.map((coord, index) => {
+                            return <Marker key={index} coordinate={{ title: "Test", latitude: coord.latitude, longitude: coord.longitude }} />
+
+                        })
+                    }
+
                     {/* <Marker
                         // animateMarkerToCoordinate
                         flat = {true}
@@ -253,39 +250,41 @@ class NavigateDelivery extends Component {
                     >
                         <Image source={require('./Navigation-04.png')} style={{ height: 35, width: 35 }} />
                     </Marker> */}
+
                     <MapViewDirections
                         // precision = 'high'
                         resetOnChange={false}
                         // timePrecision = 'now'
-                        mode='WALKING'
-                        splitWaypoints={true}
+                        mode='DRIVING'//'WALKING'
+                        // splitWaypoints={true}
                         apikey="AIzaSyAZqUx9EzJsXEsJw4NKR1nuGAQQoLfj-wY"
-                        strokeWidth={5}
+                        strokeWidth={6}
                         optimizeWaypoints={true}
                         origin={this.getMapOrigin()}
-                        waypoints={[
-                            { title: "Unitech", latitude: 22.5771, longitude: 88.4828 },
-                            { title: "City center 2", latitude: 22.6226, longitude: 88.4503 },
-                            { title: "Baguihati", latitude: 22.6138, longitude: 88.4306 },
-                            { title: "Collegemore", latitude: 22.5746, longitude: 88.4342 }
-                        ]}
-                        destination={{
-                            title: "Birati",
-                            latitude: 22.6636,
-                            longitude: 88.4273,
-                            latitudeDelta: 0.4,
-                            longitudeDelta: 0.1,
-                        }}
+                        waypoints={this.state.waypoints}
+                        destination={this.state.destination}
                         onReady={result => {
                             console.log(`Distance: ${result.distance} km`)
                         }}
                     />
                 </MapView>
                 <TouchableOpacity activeOpacity={.5}
-                    onPress={() => this.setNavigation(!this.state.enableNavivgation)}
-                    style={this.state.enableNavivgation ? { top: "28%" } : { top: "45%", left: "45%" }}>
+                    onPress={() => {
+                        this.setState({
+                            enableNavivgation: !this.state.enableNavivgation
+                        })
+                        // this.setCameraFocus()
+                    }}
+                    style={this.state.enableNavivgation ? { top: "45%" } : { top: "45%", left: "45%" }}
+                >
                     <Image source={require('./Navigation-04.png')} style={{ height: 35, width: 35 }} />
                 </TouchableOpacity>
+
+                <Text style={{ fontSize: 20 }}>Clat : {this.state.latlong.currentLatitude}</Text>
+                <Text style={{ fontSize: 20 }}>Clong : {this.state.latlong.currentLongitude}</Text>
+                <Text style={{ fontSize: 20 }}>Accuracy : {this.state.accuracy}</Text>
+                <Text style={{ fontSize: 20 }}>Speed : {this.state.speed}</Text>
+
             </SafeAreaView>
         );
     }
@@ -307,17 +306,25 @@ const styles = StyleSheet.create({
         marginVertical: 16,
         textAlign: 'center'
     },
-    mapStyle: {
+    staticStyle: {
         // transform: [{ rotate: '90deg' }],
         position: 'absolute',
         width: "100%",
-        height: "150%",
+        height: "100%",
         top: 0,
         // left: 0,
         // right: 0,
         // bottom: 0,
-
+    },
+    navStyle: {
+        position: 'absolute',
+        width: "100%",
+        height: "165%",
+        top: 0
     }
+
+
+
 });
 
 
